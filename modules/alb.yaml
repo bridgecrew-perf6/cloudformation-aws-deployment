@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: AWS CloudFormation workshop - Nested stacks - VPC template.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'The VPC ID'
+
+  NetworkPrefix:
+    Type: String
+    Description: The prefix to add to all networking pieces.
+
+  PublicSubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Description: 'The Public Subnet ID #1'
+
+  PublicSubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: 'The Public Subnet ID #2'
+
+  WebServerInstanceID1:
+    Type: String
+    Description: The Logical ID to be consumed by the Target Group for the ALB.
+
+  WebServerInstanceID2:
+    Type: String
+    Description: The Logical ID to be consumed by the Target Group for the ALB.
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP and HTTPS access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !ImportValue vpc-VpcCidr
+      VpcId: !Ref VpcId
+
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      Name: !Join [ '-', [ !Ref NetworkPrefix, alb ] ]
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnetId1
+        - !Ref PublicSubnetId2
+      Type: application
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      Name: ALBTargets
+      TargetType: instance
+      Protocol: HTTP
+      Port: 80
+      Targets:
+        - Id: !Ref WebServerInstanceID1
+        - Id: !Ref WebServerInstanceID2
+      VpcId: !Ref VpcId
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+  ALBDNSName:
+    Value: !GetAtt AppLoadBalancer.DNSName
